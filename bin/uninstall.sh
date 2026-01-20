@@ -27,6 +27,9 @@ total_items=0
 files_cleaned=0
 total_size_cleaned=0
 
+JSON_OUTPUT=""
+NON_INTERACTIVE=false
+
 # Scan applications and collect information.
 scan_applications() {
     # Cache app scan (24h TTL).
@@ -382,11 +385,85 @@ main() {
             "--debug")
                 export MO_DEBUG=1
                 ;;
+            "--list-json")
+                JSON_OUTPUT="list"
+                ;;
+            "--uninstall-json")
+                JSON_OUTPUT="uninstall"
+                ;;
+            "--non-interactive")
+                NON_INTERACTIVE=true
+                ;;
         esac
     done
 
+    if [[ "$JSON_OUTPUT" == "list" ]]; then
+        export MOLE_NO_COLOR=1
+        local apps_file
+        if ! apps_file=$(scan_applications "false"); then
+            echo '{"items":[]}'
+            return 0
+        fi
+        if ! load_applications "$apps_file"; then
+            echo '{"items":[]}'
+            return 0
+        fi
+
+        local items=""
+        for entry in "${apps_data[@]}"; do
+            IFS='|' read -r epoch app_path app_name bundle_id size last_used size_kb <<< "$entry"
+            [[ -z "$app_path" ]] && continue
+            local last_used_epoch="$epoch"
+            local size_bytes=$((size_kb * 1024))
+            [[ -n "$items" ]] && items+=","
+            items+=$(printf '{"path":"%s","name":"%s","bundleId":"%s","sizeBytes":%d,"lastUsed":"%s","lastUsedEpoch":%s}' \
+                "$app_path" "$app_name" "$bundle_id" "$size_bytes" "$last_used" "$last_used_epoch")
+        done
+        printf '{"items":[%s]}\n' "$items"
+        return 0
+    fi
+
+    if [[ "$JSON_OUTPUT" == "uninstall" ]]; then
+        export MOLE_NO_COLOR=1
+        export MOLE_UNINSTALL_JSON=1
+        local targets=()
+        for arg in "$@"; do
+            [[ "$arg" == "--uninstall-json" ]] && continue
+            targets+=("$arg")
+        done
+        if [[ ${#targets[@]} -eq 0 ]]; then
+            echo '{"status":"no_targets"}'
+            return 0
+        fi
+        local apps_file
+        if ! apps_file=$(scan_applications "false"); then
+            echo '{"status":"scan_failed"}'
+            return 1
+        fi
+        if ! load_applications "$apps_file"; then
+            echo '{"status":"scan_failed"}'
+            return 1
+        fi
+        selected_apps=()
+        for app in "${apps_data[@]}"; do
+            IFS='|' read -r _ app_path app_name bundle_id size last_used size_kb <<< "$app"
+            for target in "${targets[@]}"; do
+                if [[ "$target" == "$app_path" || "$target" == "$bundle_id" ]]; then
+                    selected_apps+=("$app")
+                fi
+            done
+        done
+        if [[ ${#selected_apps[@]} -eq 0 ]]; then
+            echo '{"status":"no_match"}'
+            return 0
+        fi
+        batch_uninstall_applications
+        printf '{"status":"ok","items":%d,"sizeBytes":%d}\n' "$files_cleaned" "$((total_size_cleaned * 1024))"
+        return 0
+    fi
+
     local use_inline_loading=false
-    if [[ -t 1 && -t 2 ]]; then
+    if [[ -t 1 && -t 2 && "$JSON_OUTPUT" == "" ]]; then
         use_inline_loading=true
     fi
 

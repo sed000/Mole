@@ -25,6 +25,10 @@ DRY_RUN=false
 PROTECT_FINDER_METADATA=false
 IS_M_SERIES=$([[ "$(uname -m)" == "arm64" ]] && echo "true" || echo "false")
 
+JSON_OUTPUT=""
+NON_INTERACTIVE=false
+SYSTEM_CLEAN_OVERRIDE=""
+
 EXPORT_LIST_FILE="$HOME/.config/mole/clean-list.txt"
 CURRENT_SECTION=""
 readonly PROTECTED_SW_DOMAINS=(
@@ -723,6 +727,25 @@ EOF
         return
     fi
 
+    if [[ "$NON_INTERACTIVE" == "true" ]]; then
+        case "$SYSTEM_CLEAN_OVERRIDE" in
+            "true")
+                if ensure_sudo_session "System cleanup requires admin access"; then
+                    SYSTEM_CLEAN=true
+                else
+                    SYSTEM_CLEAN=false
+                fi
+                ;;
+            "false")
+                SYSTEM_CLEAN=false
+                ;;
+            *)
+                SYSTEM_CLEAN=false
+                ;;
+        esac
+        return
+    fi
+
     if [[ -t 0 ]]; then
         echo -ne "${PURPLE}${ICON_ARROW}${NC} System caches need sudo — ${GREEN}Enter${NC} continue, ${GRAY}Space${NC} skip: "
 
@@ -1059,8 +1082,40 @@ main() {
                 manage_whitelist "clean"
                 exit 0
                 ;;
+            "--json")
+                JSON_OUTPUT="json"
+                ;;
+            "--non-interactive")
+                NON_INTERACTIVE=true
+                ;;
+            "--system")
+                SYSTEM_CLEAN_OVERRIDE="true"
+                ;;
+            "--no-system")
+                SYSTEM_CLEAN_OVERRIDE="false"
+                ;;
         esac
     done
+
+    if [[ "$JSON_OUTPUT" == "json" ]]; then
+        export MOLE_NO_COLOR=1
+        export MOLE_SPINNER_CHARS=""
+        start_cleanup
+        perform_cleanup
+        local status="ok"
+        local freed_bytes=$((total_size_cleaned * 1024))
+        local result
+        result=$(printf '{"status":"%s","dryRun":%s,"systemClean":%s,"items":%d,"categories":%d,"sizeBytes":%d,"whitelistSkipped":%d}' \
+            "$status" \
+            "${DRY_RUN}" \
+            "${SYSTEM_CLEAN}" \
+            "${files_cleaned}" \
+            "${total_items}" \
+            "$freed_bytes" \
+            "${whitelist_skipped_count}")
+        echo "$result"
+        exit 0
+    fi
 
     start_cleanup
     hide_cursor

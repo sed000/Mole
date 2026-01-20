@@ -810,7 +810,7 @@ clean_project_artifacts() {
         safe_to_clean+=("$item")
     done
     # Build menu options - one per artifact
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_PURGE_JSON:-}" ]]; then
         start_inline_spinner "Calculating sizes..."
     fi
     local -a menu_options=()
@@ -1072,9 +1072,28 @@ clean_project_artifacts() {
         item_sizes=("${sorted_item_sizes[@]}")
         item_recent_flags=("${sorted_item_recent_flags[@]}")
     fi
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_PURGE_JSON:-}" ]]; then
         stop_inline_spinner
     fi
+
+    if [[ -n "${MOLE_PURGE_LIST:-}" ]]; then
+        local items=""
+        for ((i = 0; i < ${#item_paths[@]}; i++)); do
+            local path="${item_paths[i]}"
+            local size_kb="${item_sizes[i]}"
+            local project_path
+            project_path=$(get_project_path "$path")
+            local artifact
+            artifact=$(get_artifact_display_name "$path")
+            local size_bytes=$((size_kb * 1024))
+            [[ -n "$items" ]] && items+=","            items+=$(printf '{"path":"%s","project":"%s","artifact":"%s","sizeBytes":%d}' \
+                "$path" "$project_path" "$artifact" "$size_bytes")
+        done
+        printf '{"items":[%s]}\n' "$items"
+        unset PURGE_CATEGORY_SIZES PURGE_RECENT_CATEGORIES PURGE_SELECTION_RESULT
+        return 0
+    fi
+
     # Set global vars for selector
     export PURGE_CATEGORY_SIZES=$(
         IFS=,
@@ -1086,7 +1105,7 @@ clean_project_artifacts() {
     )
     # Interactive selection (only if terminal is available)
     PURGE_SELECTION_RESULT=""
-    if [[ -t 0 ]]; then
+    if [[ -t 0 && -z "${MOLE_PURGE_JSON:-}" ]]; then
         if ! select_purge_categories "${menu_options[@]}"; then
             unset PURGE_CATEGORY_SIZES PURGE_RECENT_CATEGORIES PURGE_SELECTION_RESULT
             return 1
@@ -1122,9 +1141,10 @@ clean_project_artifacts() {
         if [[ -z "$item_path" || "$item_path" == "/" || "$item_path" == "$HOME" || "$item_path" != "$HOME/"* ]]; then
             continue
         fi
-        if [[ -t 1 ]]; then
-            start_inline_spinner "Cleaning $project_path/$artifact_type..."
-        fi
+    if [[ -t 1 && -z "${MOLE_PURGE_JSON:-}" ]]; then
+        start_inline_spinner "Cleaning $project_path/$artifact_type..."
+    fi
+
         if [[ -e "$item_path" ]]; then
             safe_remove "$item_path" true
             if [[ ! -e "$item_path" ]]; then
@@ -1133,7 +1153,7 @@ clean_project_artifacts() {
                 ((cleaned_count++))
             fi
         fi
-        if [[ -t 1 ]]; then
+        if [[ -t 1 && -z "${MOLE_PURGE_JSON:-}" ]]; then
             stop_inline_spinner
             echo -e "${GREEN}${ICON_SUCCESS}${NC} $project_path - $artifact_type ${GREEN}($size_human)${NC}"
         fi

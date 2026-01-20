@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -192,6 +193,41 @@ func animTickWithSpeed(cpuUsage float64) tea.Cmd {
 }
 
 func main() {
+	args := os.Args[1:]
+	jsonMode := false
+	once := false
+
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonMode = true
+		case "--once":
+			once = true
+		}
+	}
+
+	if jsonMode {
+		collector := NewCollector()
+		snapshot, err := collector.Collect()
+		if err != nil {
+			fmt.Printf("{\"status\":\"error\",\"message\":%q}\n", err.Error())
+			return
+		}
+		payload := struct {
+			Status string          `json:"status"`
+			Data   MetricsSnapshot `json:"data"`
+		}{
+			Status: "ok",
+			Data:   snapshot,
+		}
+		encoded, _ := json.Marshal(payload)
+		fmt.Println(string(encoded))
+		if once {
+			return
+		}
+		return
+	}
+
 	p := tea.NewProgram(newModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "system status error: %v\n", err)

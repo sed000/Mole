@@ -42,6 +42,17 @@ is_clamshell_mode() {
     return 1 # Lid is open
 }
 
+try_env_sudo_password() {
+    local password="${MOLE_SUDO_PASSWORD:-}"
+    [[ -z "$password" ]] && return 1
+
+    if printf '%s\n' "$password" | sudo -S -p "" -v > /dev/null 2>&1; then
+        return 0
+    fi
+
+    return 1
+}
+
 _request_password() {
     local tty_path="$1"
     local attempts=0
@@ -108,6 +119,12 @@ request_sudo_access() {
         return 0
     fi
 
+    sudo -k
+
+    if try_env_sudo_password; then
+        return 0
+    fi
+
     # Get TTY path
     local tty_path="/dev/tty"
     if [[ ! -r "$tty_path" || ! -w "$tty_path" ]]; then
@@ -117,8 +134,6 @@ request_sudo_access() {
             return 1
         fi
     fi
-
-    sudo -k
 
     # Check if in clamshell mode - if yes, skip Touch ID entirely
     if is_clamshell_mode; then

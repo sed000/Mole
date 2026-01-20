@@ -11,5 +11,9 @@ if [[ -x "$GO_BIN" ]]; then
     exec "$GO_BIN" "$@"
 fi
 
+if command -v go > /dev/null 2>&1; then
+    exec go run "$SCRIPT_DIR/../cmd/status" "$@"
+fi
+
 echo "Bundled status binary not found. Please reinstall Mole or run mo update to restore it." >&2
 exit 1

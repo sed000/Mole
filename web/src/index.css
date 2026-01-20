@@ -1,0 +1,47 @@
+:root {
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  font-weight: 400;
+  color: var(--ink-900);
+  background-color: var(--sand-100);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root {
+  --font-sans: 'Outfit', 'Trebuchet MS', 'Helvetica Neue', sans-serif;
+  --font-display: 'Space Grotesk', 'Impact', 'Trebuchet MS', sans-serif;
+  --sand-100: #f7f1e9;
+  --clay-50: #f5e9dc;
+  --clay-100: #edd7c2;
+  --ink-900: #2b221b;
+  --ink-800: #3d2f25;
+  --ink-700: #4d3b2f;
+  --ink-500: #6c5a4c;
+  --ink-400: #857163;
+  --mint-600: #1f7a62;
+  --sun-600: #b9741a;
+  --rust-600: #a1442f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top left, #fff8f1 0%, #f2e4d6 50%, #e7d7c7 100%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}

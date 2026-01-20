@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -127,9 +128,52 @@ func (m model) inOverviewMode() bool {
 }
 
 func main() {
-	target := os.Getenv("MO_ANALYZE_PATH")
-	if target == "" && len(os.Args) > 1 {
-		target = os.Args[1]
+	args := os.Args[1:]
+	jsonMode := false
+	deleteMode := false
+	var deleteTargets []string
+	var target string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--json":
+			jsonMode = true
+		case "--delete":
+			deleteMode = true
+			if i+1 < len(args) {
+				deleteTargets = append(deleteTargets, args[i+1:]...)
+				i = len(args)
+			}
+		case "--path":
+			if i+1 < len(args) {
+				target = args[i+1]
+				i++
+			}
+		default:
+			if target == "" && !strings.HasPrefix(arg, "--") {
+				target = arg
+			}
+		}
+	}
+
+	if deleteMode {
+		if len(deleteTargets) == 0 {
+			fmt.Println("{\"status\":\"no_targets\"}")
+			return
+		}
+		var counter int64
+		count, err := trashPaths(deleteTargets, &counter)
+		if err != nil {
+			fmt.Printf("{\"status\":\"error\",\"message\":%q}\n", err.Error())
+			return
+		}
+		fmt.Printf("{\"status\":\"ok\",\"items\":%d}\n", count)
+		return
+	}
+
+	if target == "" {
+		target = os.Getenv("MO_ANALYZE_PATH")
 	}
 
 	var abs string
@@ -152,6 +196,35 @@ func main() {
 	prefetchCtx, prefetchCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer prefetchCancel()
 	go prefetchOverviewCache(prefetchCtx)
+
+	if jsonMode {
+		var filesScanned, dirsScanned, bytesScanned int64
+		currentPath := &atomic.Value{}
+		currentPath.Store("")
+		result, err := scanPathConcurrent(abs, &filesScanned, &dirsScanned, &bytesScanned, currentPath)
+		if err != nil {
+			fmt.Printf("{\"status\":\"error\",\"message\":%q}\n", err.Error())
+			return
+		}
+		payload := struct {
+			Status string      `json:"status"`
+			Path   string      `json:"path"`
+			Total  int64       `json:"totalSize"`
+			Files  int64       `json:"totalFiles"`
+			Items  []dirEntry  `json:"entries"`
+			Large  []fileEntry `json:"largeFiles"`
+		}{
+			Status: "ok",
+			Path:   abs,
+			Total:  result.TotalSize,
+			Files:  result.TotalFiles,
+			Items:  result.Entries,
+			Large:  result.LargeFiles,
+		}
+		encoded, _ := json.Marshal(payload)
+		fmt.Println(string(encoded))
+		return
+	}
 
 	p := tea.NewProgram(newModel(abs, isOverview), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

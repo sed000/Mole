@@ -28,6 +28,9 @@ trap cleanup EXIT
 trap 'trap - EXIT; cleanup; exit 130' INT TERM
 
 # Scan configuration
+JSON_OUTPUT=""
+NON_INTERACTIVE=false
+
 readonly INSTALLER_SCAN_MAX_DEPTH_DEFAULT=2
 readonly INSTALLER_SCAN_PATHS=(
     "$HOME/Downloads"
@@ -52,6 +55,8 @@ if command -v zipinfo > /dev/null 2>&1; then
 elif command -v unzip > /dev/null 2>&1; then
     ZIP_LIST_CMD=(unzip -Z -1)
 fi
+
+INSTALLER_ITEMS_JSON=""
 
 TERMINAL_WIDTH=0
 
@@ -201,7 +206,7 @@ collect_installers() {
     DISPLAY_NAMES=()
 
     # Start scanning with spinner
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_INSTALLER_JSON:-}" ]]; then
         start_inline_spinner "Scanning for installers..."
     fi
 
@@ -217,7 +222,7 @@ collect_installers() {
         debug_file_action "Found installer" "$file"
     done < <(scan_all_installers | sort -u)
 
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_INSTALLER_JSON:-}" ]]; then
         stop_inline_spinner
     fi
 
@@ -229,7 +234,7 @@ collect_installers() {
     fi
 
     # Calculate sizes with spinner
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_INSTALLER_JSON:-}" ]]; then
         start_inline_spinner "Calculating sizes..."
     fi
 
@@ -269,9 +274,17 @@ collect_installers() {
         INSTALLER_SIZES+=("$file_size")
         INSTALLER_SOURCES+=("$source")
         DISPLAY_NAMES+=("$display")
+
+        local json_name
+        json_name=$(basename "$file")
+        if [[ -n "$INSTALLER_ITEMS_JSON" ]]; then
+            INSTALLER_ITEMS_JSON+="\n"
+        fi
+        INSTALLER_ITEMS_JSON+=$(printf '{"path":"%s","name":"%s","sizeBytes":%s,"source":"%s"}' \
+            "$file" "$json_name" "$file_size" "$source")
     done
 
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_INSTALLER_JSON:-}" ]]; then
         stop_inline_spinner
     fi
     return 0
@@ -596,7 +609,7 @@ delete_selected_installers() {
         fi
     done
 
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_INSTALLER_JSON:-}" ]]; then
         stop_inline_spinner
     fi
 
@@ -666,17 +679,67 @@ show_summary() {
 }
 
 main() {
+    local -a delete_paths=()
     for arg in "$@"; do
         case "$arg" in
             "--debug")
                 export MO_DEBUG=1
                 ;;
+            "--json")
+                JSON_OUTPUT="json"
+                ;;
+            "--non-interactive")
+                NON_INTERACTIVE=true
+                ;;
+            "--delete")
+                JSON_OUTPUT="delete"
+                ;;
             *)
-                echo "Unknown option: $arg"
-                exit 1
+                if [[ "$JSON_OUTPUT" == "delete" ]]; then
+                    delete_paths+=("$arg")
+                else
+                    echo "Unknown option: $arg"
+                    exit 1
+                fi
                 ;;
         esac
     done
+
+    if [[ "$JSON_OUTPUT" == "delete" ]]; then
+        export MOLE_NO_COLOR=1
+        export MOLE_INSTALLER_JSON=1
+        if [[ ${#delete_paths[@]} -eq 0 ]]; then
+            echo '{"status":"no_targets"}'
+            return 0
+        fi
+        local deleted=0
+        local total_size=0
+        for path in "${delete_paths[@]}"; do
+            [[ -z "$path" ]] && continue
+            if [[ -f "$path" ]]; then
+                local size
+                size=$(get_file_size "$path")
+                if safe_remove "$path" true; then
+                    ((deleted++))
+                    total_size=$((total_size + size))
+                fi
+            fi
+        done
+        printf '{"status":"ok","items":%d,"sizeBytes":%d}\n' "$deleted" "$total_size"
+        return 0
+    fi
+
+    if [[ "$JSON_OUTPUT" == "json" ]]; then
+        export MOLE_NO_COLOR=1
+        export MOLE_INSTALLER_JSON=1
+        collect_installers || true
+        local items=""
+        if [[ -n "$INSTALLER_ITEMS_JSON" ]]; then
+            items=$(printf '%s' "$INSTALLER_ITEMS_JSON" | paste -sd ',' -)
+        fi
+        printf '{"items":[%s]}\n' "$items"
+        return 0
+    fi
 
     hide_cursor
     perform_installers

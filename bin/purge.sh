@@ -20,6 +20,8 @@ source "$SCRIPT_DIR/../lib/clean/project.sh"
 
 # Configuration
 CURRENT_SECTION=""
+JSON_OUTPUT=""
+NON_INTERACTIVE=false
 
 # Section management
 start_section() {
@@ -82,7 +84,7 @@ perform_purge() {
     trap cleanup_monitor INT TERM
 
     # Show scanning with spinner on same line as title
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_PURGE_JSON:-}" ]]; then
         # Print title first
         printf '%s' "${PURPLE_BOLD}Purge Project Artifacts${NC} "
 
@@ -255,6 +257,18 @@ main() {
             "--debug")
                 export MO_DEBUG=1
                 ;;
+            "--json")
+                JSON_OUTPUT="json"
+                ;;
+            "--list-json")
+                JSON_OUTPUT="list"
+                ;;
+            "--non-interactive")
+                NON_INTERACTIVE=true
+                ;;
+            "--path")
+                # Reserved for JSON deletion; handled later
+                ;;
             *)
                 echo "Unknown option: $arg"
                 echo "Use 'mo purge --help' for usage information"
@@ -263,10 +277,73 @@ main() {
         esac
     done
 
-    start_purge
-    hide_cursor
-    perform_purge
-    show_cursor
+    local -a delete_paths=()
+    if [[ "$JSON_OUTPUT" == "json" || "$JSON_OUTPUT" == "list" ]]; then
+        export MOLE_NO_COLOR=1
+        export MOLE_PURGE_JSON=1
+        export _PURGE_DISCOVERY_SILENT=1
+        export MOLE_SPINNER_CHARS=""
+        local capture_next=false
+        for arg in "$@"; do
+            if [[ "$capture_next" == "true" ]]; then
+                delete_paths+=("$arg")
+                capture_next=false
+                continue
+            fi
+            if [[ "$arg" == "--path" ]]; then
+                capture_next=true
+            fi
+        done
+    fi
+
+    if [[ "$JSON_OUTPUT" == "json" && ${#delete_paths[@]} -gt 0 ]]; then
+        local deleted=0
+        local total_size=0
+        for item in "${delete_paths[@]}"; do
+            [[ -z "$item" ]] && continue
+            if [[ -d "$item" ]]; then
+                local size_kb
+                size_kb=$(get_path_size_kb "$item" 2> /dev/null || echo "0")
+                if safe_remove "$item" true; then
+                    ((deleted++))
+                    total_size=$((total_size + (size_kb * 1024)))
+                fi
+            fi
+        done
+        printf '{"status":"ok","items":%d,"sizeBytes":%d}\n' "$deleted" "$total_size"
+        return 0
+    fi
+
+    if [[ "$JSON_OUTPUT" == "list" ]]; then
+        export MOLE_PURGE_LIST=1
+        start_purge
+        perform_purge
+        return 0
+    fi
+
+    if [[ "$JSON_OUTPUT" == "json" ]]; then
+        start_purge
+        perform_purge
+    else
+        start_purge
+        hide_cursor
+        perform_purge
+        show_cursor
+    fi
+
+    if [[ "$JSON_OUTPUT" == "json" ]]; then
+        local stats_dir="${XDG_CACHE_HOME:-$HOME/.cache}/mole"
+        local total_size_cleaned=0
+        local total_items_cleaned=0
+        if [[ -f "$stats_dir/purge_stats" ]]; then
+            total_size_cleaned=$(cat "$stats_dir/purge_stats" 2> /dev/null || echo "0")
+        fi
+        if [[ -f "$stats_dir/purge_count" ]]; then
+            total_items_cleaned=$(cat "$stats_dir/purge_count" 2> /dev/null || echo "0")
+        fi
+        local freed_bytes=$((total_size_cleaned * 1024))
+        printf '{"status":"ok","items":%d,"sizeBytes":%d}\n' "$total_items_cleaned" "$freed_bytes"
+    fi
 }
 
 main "$@"

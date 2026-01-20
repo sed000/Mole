@@ -14,15 +14,28 @@ readonly MOLE_BASE_LOADED=1
 # Color Definitions
 # ============================================================================
 readonly ESC=$'\033'
-readonly GREEN="${ESC}[0;32m"
-readonly BLUE="${ESC}[0;34m"
-readonly CYAN="${ESC}[0;36m"
-readonly YELLOW="${ESC}[0;33m"
-readonly PURPLE="${ESC}[0;35m"
-readonly PURPLE_BOLD="${ESC}[1;35m"
-readonly RED="${ESC}[0;31m"
-readonly GRAY="${ESC}[0;90m"
-readonly NC="${ESC}[0m"
+
+if [[ "${MOLE_NO_COLOR:-}" == "1" || -n "${NO_COLOR:-}" ]]; then
+    readonly GREEN=""
+    readonly BLUE=""
+    readonly CYAN=""
+    readonly YELLOW=""
+    readonly PURPLE=""
+    readonly PURPLE_BOLD=""
+    readonly RED=""
+    readonly GRAY=""
+    readonly NC=""
+else
+    readonly GREEN="${ESC}[0;32m"
+    readonly BLUE="${ESC}[0;34m"
+    readonly CYAN="${ESC}[0;36m"
+    readonly YELLOW="${ESC}[0;33m"
+    readonly PURPLE="${ESC}[0;35m"
+    readonly PURPLE_BOLD="${ESC}[1;35m"
+    readonly RED="${ESC}[0;31m"
+    readonly GRAY="${ESC}[0;90m"
+    readonly NC="${ESC}[0m"
+fi
 
 # ============================================================================
 # Icon Definitions

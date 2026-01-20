@@ -291,6 +291,10 @@ start_inline_spinner() {
     stop_inline_spinner 2> /dev/null || true
     local message="$1"
 
+    if [[ -n "${MOLE_NO_COLOR:-}" ]]; then
+        return 0
+    fi
+
     if [[ -t 1 ]]; then
         # Create unique stop flag file for this spinner instance
         INLINE_SPINNER_STOP_FILE="${TMPDIR:-/tmp}/mole_spinner_$$_$RANDOM.stop"

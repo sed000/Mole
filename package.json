@@ -1,0 +1,11 @@
+{
+  "name": "mole-local-web",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --cwd server dev & bun run --cwd web dev",
+    "dev:server": "bun run --cwd server dev",
+    "dev:web": "bun run --cwd web dev",
+    "build:web": "bun run --cwd web build",
+    "start": "bun run --cwd server start"
+  }
+}

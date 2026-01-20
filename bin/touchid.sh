@@ -315,6 +315,14 @@ main() {
         status)
             show_status
             ;;
+        --json)
+            export MOLE_NO_COLOR=1
+            if is_touchid_configured; then
+                echo '{"enabled":true}'
+            else
+                echo '{"enabled":false}'
+            fi
+            ;;
         "")
             show_menu
             ;;

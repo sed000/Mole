@@ -33,6 +33,13 @@ tests/tmp-*
 .gocache/
 .gomod/
 
+# Web/Server deps
+server/node_modules/
+server/bun.lock
+web/node_modules/
+web/bun.lock
+web/dist/
+
 # Backup files
 *.bak
 *.backup

@@ -23,6 +23,12 @@ source "$SCRIPT_DIR/lib/check/health_json.sh"
 source "$SCRIPT_DIR/lib/check/all.sh"
 source "$SCRIPT_DIR/lib/manage/whitelist.sh"
 
+JSON_OUTPUT=""
+NON_INTERACTIVE=false
+APPLY_SECURITY_FIXES=false
+APPLY_UPDATES=false
+APPLY_AUTO_FIX=false
+
 print_header() {
     printf '\n'
     echo -e "${PURPLE_BOLD}Optimize and Check${NC}"
@@ -57,6 +63,16 @@ run_system_checks() {
     echo ""
 
     show_suggestions
+
+    if [[ "$NON_INTERACTIVE" == "true" ]]; then
+        if [[ "$APPLY_UPDATES" == "true" ]]; then
+            perform_updates
+        fi
+        if [[ "$APPLY_AUTO_FIX" == "true" ]]; then
+            perform_auto_fix
+        fi
+        return 0
+    fi
 
     if ask_for_updates; then
         perform_updates
@@ -269,6 +285,15 @@ ask_for_security_fixes() {
         return 1
     fi
 
+    if [[ "$NON_INTERACTIVE" == "true" ]]; then
+        if [[ "$APPLY_SECURITY_FIXES" == "true" ]]; then
+            export MOLE_SECURITY_FIXES_SHOWN=true
+            return 0
+        fi
+        export MOLE_SECURITY_FIXES_SKIPPED=true
+        return 1
+    fi
+
     echo ""
     echo -e "${BLUE}SECURITY FIXES${NC}"
     for entry in "${SECURITY_FIXES[@]}"; do
@@ -378,20 +403,40 @@ main() {
                 manage_whitelist "optimize"
                 exit 0
                 ;;
+            "--json")
+                JSON_OUTPUT="json"
+                ;;
+            "--non-interactive")
+                NON_INTERACTIVE=true
+                ;;
+            "--apply-security-fixes")
+                APPLY_SECURITY_FIXES=true
+                ;;
+            "--apply-updates")
+                APPLY_UPDATES=true
+                ;;
+            "--apply-autofix")
+                APPLY_AUTO_FIX=true
+                ;;
         esac
     done
 
     trap cleanup_all EXIT
     trap handle_interrupt INT TERM
 
-    if [[ -t 1 ]]; then
-        clear
-    fi
-    print_header
+    if [[ "$JSON_OUTPUT" == "json" ]]; then
+        export MOLE_NO_COLOR=1
+        export MOLE_SPINNER_CHARS=""
+    else
+        if [[ -t 1 ]]; then
+            clear
+        fi
+        print_header
 
-    # Dry-run indicator.
-    if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
-        echo -e "${YELLOW}${ICON_DRY_RUN} DRY RUN MODE${NC} - No files will be modified\n"
+        # Dry-run indicator.
+        if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+            echo -e "${YELLOW}${ICON_DRY_RUN} DRY RUN MODE${NC} - No files will be modified\n"
+        fi
     fi
 
     if ! command -v jq > /dev/null 2>&1; then
@@ -406,7 +451,7 @@ main() {
         exit 1
     fi
 
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && "$JSON_OUTPUT" != "json" ]]; then
         start_inline_spinner "Collecting system info..."
     fi
 
@@ -429,8 +474,39 @@ main() {
         exit 1
     fi
 
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && "$JSON_OUTPUT" != "json" ]]; then
         stop_inline_spinner
+    fi
+
+    if [[ "$JSON_OUTPUT" == "json" ]]; then
+        local -a safe_items=()
+        local -a confirm_items=()
+        local opts_file
+        opts_file=$(mktemp_file)
+        parse_optimizations "$health_json" > "$opts_file"
+
+        while IFS= read -r opt_json; do
+            [[ -z "$opt_json" ]] && continue
+
+            local safe
+            safe=$(echo "$opt_json" | jq -r '.safe')
+
+            if [[ "$safe" == "true" ]]; then
+                safe_items+=("$opt_json")
+            else
+                confirm_items+=("$opt_json")
+            fi
+        done < "$opts_file"
+
+        local safe_count=${#safe_items[@]}
+        local confirm_count=${#confirm_items[@]}
+        local total_count=$((safe_count + confirm_count))
+        printf '{"health":%s,"counts":{"safe":%d,"confirm":%d,"total":%d}}\n' \
+            "$health_json" \
+            "$safe_count" \
+            "$confirm_count" \
+            "$total_count"
+        return 0
     fi
 
     show_system_health "$health_json"

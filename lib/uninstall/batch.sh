@@ -187,7 +187,7 @@ batch_uninstall_applications() {
     # Cache current user outside loop
     local current_user=$(whoami)
 
-    if [[ -t 1 ]]; then start_inline_spinner "Scanning files..."; fi
+    if [[ -t 1 && -z "${MOLE_UNINSTALL_JSON:-}" ]]; then start_inline_spinner "Scanning files..."; fi
     for selected_app in "${selected_apps[@]}"; do
         [[ -z "$selected_app" ]] && continue
         IFS='|' read -r _ app_path app_name bundle_id _ _ <<< "$selected_app"
@@ -261,7 +261,7 @@ batch_uninstall_applications() {
         encoded_system_files=$(printf '%s' "$system_files" | base64 | tr -d '\n')
         app_details+=("$app_name|$app_path|$bundle_id|$total_kb|$encoded_files|$encoded_system_files|$has_sensitive_data|$needs_sudo|$is_brew_cask|$cask_name")
     done
-    if [[ -t 1 ]]; then stop_inline_spinner; fi
+    if [[ -t 1 && -z "${MOLE_UNINSTALL_JSON:-}" ]]; then stop_inline_spinner; fi
 
     local size_display=$(bytes_to_human "$((total_estimated_size * 1024))")
 
@@ -401,13 +401,14 @@ batch_uninstall_applications() {
         # Show progress for current app
         local brew_tag=""
         [[ "$is_brew_cask" == "true" ]] && brew_tag=" ${CYAN}[Brew]${NC}"
-        if [[ -t 1 ]]; then
-            if [[ ${#app_details[@]} -gt 1 ]]; then
-                start_inline_spinner "[$current_index/${#app_details[@]}] Uninstalling ${app_name}${brew_tag}..."
-            else
-                start_inline_spinner "Uninstalling ${app_name}${brew_tag}..."
-            fi
+    if [[ -t 1 && -z "${MOLE_UNINSTALL_JSON:-}" ]]; then
+        if [[ ${#app_details[@]} -gt 1 ]]; then
+            start_inline_spinner "[$current_index/${#app_details[@]}] Uninstalling ${app_name}${brew_tag}..."
+        else
+            start_inline_spinner "Uninstalling ${app_name}${brew_tag}..."
         fi
+    fi
+
 
         # Stop Launch Agents/Daemons before removal.
         local has_system_files="false"
@@ -424,7 +425,9 @@ batch_uninstall_applications() {
 
         # Remove the application only if not running.
         # Stop spinner before any removal attempt (avoids mixed output on errors)
-        [[ -t 1 ]] && stop_inline_spinner
+        if [[ -t 1 && -z "${MOLE_UNINSTALL_JSON:-}" ]]; then
+            stop_inline_spinner
+        fi
 
         local used_brew_successfully=false
         if [[ -z "$reason" ]]; then
@@ -478,7 +481,7 @@ batch_uninstall_applications() {
             fi
 
             # Show success
-            if [[ -t 1 ]]; then
+            if [[ -t 1 && -z "${MOLE_UNINSTALL_JSON:-}" ]]; then
                 if [[ ${#app_details[@]} -gt 1 ]]; then
                     echo -e "${GREEN}✓${NC} [$current_index/${#app_details[@]}] ${app_name}"
                 else
@@ -494,7 +497,7 @@ batch_uninstall_applications() {
             success_items+=("$app_name")
         else
             # Show failure
-            if [[ -t 1 ]]; then
+            if [[ -t 1 && -z "${MOLE_UNINSTALL_JSON:-}" ]]; then
                 if [[ ${#app_details[@]} -gt 1 ]]; then
                     echo -e "${ICON_ERROR} [$current_index/${#app_details[@]}] ${app_name} ${GRAY}($reason)${NC}"
                 else
@@ -589,14 +592,16 @@ batch_uninstall_applications() {
         title="Uninstall incomplete"
     fi
 
-    echo ""
-    print_summary_block "$title" "${summary_details[@]}"
-    printf '\n'
+    if [[ -z "${MOLE_UNINSTALL_JSON:-}" ]]; then
+        echo ""
+        print_summary_block "$title" "${summary_details[@]}"
+        printf '\n'
+    fi
 
     # Auto-run brew autoremove if Homebrew casks were uninstalled
     if [[ $brew_apps_removed -gt 0 ]]; then
         # Show spinner while checking for orphaned dependencies
-        if [[ -t 1 ]]; then
+        if [[ -t 1 && -z "${MOLE_UNINSTALL_JSON:-}" ]]; then
             start_inline_spinner "Checking brew dependencies..."
         fi
 
@@ -605,11 +610,11 @@ batch_uninstall_applications() {
         removed_count=$(printf '%s\n' "$autoremove_output" | grep -c "^Uninstalling" || true)
         removed_count=${removed_count:-0}
 
-        if [[ -t 1 ]]; then
+        if [[ -t 1 && -z "${MOLE_UNINSTALL_JSON:-}" ]]; then
             stop_inline_spinner
         fi
 
-        if [[ $removed_count -gt 0 ]]; then
+        if [[ $removed_count -gt 0 && -z "${MOLE_UNINSTALL_JSON:-}" ]]; then
             echo -e "${GREEN}${ICON_SUCCESS}${NC} Cleaned $removed_count orphaned brew dependencies"
             echo ""
         fi
