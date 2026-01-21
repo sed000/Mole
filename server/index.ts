@@ -123,13 +123,40 @@ const runJob = (job: Job) => {
   job.status = "running";
   job.startedAt = Date.now();
 
-  const child = spawn(job.command, job.args, {
-    cwd: ROOT_DIR,
-    env: {
-      ...process.env,
-      MOLE_NO_COLOR: "1",
-      ...(job.env ?? {}),
-    },
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(job.command, job.args, {
+      cwd: ROOT_DIR,
+      env: {
+        ...process.env,
+        MOLE_NO_COLOR: "1",
+        ...(job.env ?? {}),
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    writeLog(job, message);
+    job.exitCode = 1;
+    job.finishedAt = Date.now();
+    job.status = "failed";
+    if (job.sse) {
+      for (const controller of job.sse) {
+        controller.enqueue(`event: done\ndata: ${JSON.stringify({ exitCode: 1 })}\n\n`);
+      }
+    }
+    return;
+  }
+
+  child.on("error", (error) => {
+    writeLog(job, error.message);
+    job.exitCode = 1;
+    job.finishedAt = Date.now();
+    job.status = "failed";
+    if (job.sse) {
+      for (const controller of job.sse) {
+        controller.enqueue(`event: done\ndata: ${JSON.stringify({ exitCode: 1 })}\n\n`);
+      }
+    }
   });
 
   child.stdout.on("data", (chunk) => {
@@ -198,7 +225,7 @@ const resolveAnalyzeCommand = () => {
   if (fileExists(analyzeBin)) {
     return { command: analyzeBin, args: [] as string[] };
   }
-  return { command: "go", args: ["run", "./cmd/analyze"] };
+  return { command: binPath("analyze"), args: [] as string[] };
 };
 
 const resolveStatusCommand = () => {
@@ -206,7 +233,7 @@ const resolveStatusCommand = () => {
   if (fileExists(statusBin)) {
     return { command: statusBin, args: [] as string[] };
   }
-  return { command: "go", args: ["run", "./cmd/status"] };
+  return { command: binPath("status"), args: [] as string[] };
 };
 
 const serveStatic = async (request: Request) => {
@@ -248,6 +275,15 @@ const server = Bun.serve({
       return ok({ jobs: listJobs() });
     }
 
+    if (pathname.startsWith("/api/jobs/") && pathname.endsWith("/stream")) {
+      const id = pathname.split("/")[3];
+      const job = id ? jobs.get(id) : null;
+      if (!job) {
+        return notFound();
+      }
+      return handleSse(job);
+    }
+
     if (pathname.startsWith("/api/jobs/") && request.method === "GET") {
       const id = pathname.split("/")[3];
       const job = id ? jobs.get(id) : null;
@@ -265,15 +301,6 @@ const server = Bun.serve({
         exitCode: job.exitCode ?? null,
         summary: job.summary ?? null,
       });
-    }
-
-    if (pathname.startsWith("/api/jobs/") && pathname.endsWith("/stream")) {
-      const id = pathname.split("/")[3];
-      const job = id ? jobs.get(id) : null;
-      if (!job) {
-        return notFound();
-      }
-      return handleSse(job);
     }
 
     if (pathname === "/api/clean" && request.method === "POST") {
@@ -394,13 +421,16 @@ const server = Bun.serve({
       if (!body) {
         return badRequest("invalid_json");
       }
-      const path = typeof body.path === "string" ? body.path : "";
+      const path = typeof body.path === "string" ? body.path.trim() : "";
       const { command, args } = resolveAnalyzeCommand();
       const fullArgs = [...args, "--json"];
+      const env: Record<string, string> = {};
       if (path.length > 0) {
         fullArgs.push("--path", path);
+      } else if (typeof process.env.HOME === "string" && process.env.HOME.length > 0) {
+        env.MO_ANALYZE_PATH = process.env.HOME;
       }
-      const job = enqueueJob(command, fullArgs);
+      const job = enqueueJob(command, fullArgs, Object.keys(env).length > 0 ? env : undefined);
       return ok({ jobId: job.id });
     }
 

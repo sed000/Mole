@@ -796,9 +796,13 @@ clean_project_artifacts() {
     # Clean up trap
     trap - INT TERM
     if [[ ${#all_found_items[@]} -eq 0 ]]; then
-        echo ""
-        echo -e "${GREEN}${ICON_SUCCESS}${NC} Great! No old project artifacts to clean"
-        printf '\n'
+        if [[ -n "${MOLE_PURGE_LIST:-}" ]]; then
+            printf '{"items":[]}\n'
+        elif [[ -z "${MOLE_PURGE_JSON:-}" ]]; then
+            echo ""
+            echo -e "${GREEN}${ICON_SUCCESS}${NC} Great! No old project artifacts to clean"
+            printf '\n'
+        fi
         return 2 # Special code: nothing to clean
     fi
     # Mark recently modified items (for default selection state)
@@ -1086,7 +1090,8 @@ clean_project_artifacts() {
             local artifact
             artifact=$(get_artifact_display_name "$path")
             local size_bytes=$((size_kb * 1024))
-            [[ -n "$items" ]] && items+=","            items+=$(printf '{"path":"%s","project":"%s","artifact":"%s","sizeBytes":%d}' \
+            [[ -n "$items" ]] && items+=","
+            items+=$(printf '{"path":"%s","project":"%s","artifact":"%s","sizeBytes":%d}' \
                 "$path" "$project_path" "$artifact" "$size_bytes")
         done
         printf '{"items":[%s]}\n' "$items"

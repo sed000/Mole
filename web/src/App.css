@@ -196,9 +196,35 @@
 }
 
 .form-group label {
-  font-weight: 600;
-  color: var(--ink-700);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(247, 245, 242, 0.65);
 }
+
+.form-group .toggle {
+  margin-bottom: 0.75rem;
+}
+
+.form-group input,
+.form-group textarea {
+  margin-top: 0.45rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(18, 15, 12, 0.55);
+  color: #f7f5f2;
+  font-size: 0.95rem;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.form-group input:disabled,
+.form-group textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 
 .form-group input,
 .form-group textarea {

@@ -45,10 +45,12 @@ note_activity() {
 # Main purge function
 start_purge() {
     # Clear screen for better UX
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_PURGE_JSON:-}" ]]; then
         printf '\033[2J\033[H'
     fi
-    printf '\n'
+    if [[ -z "${MOLE_PURGE_JSON:-}" ]]; then
+        printf '\n'
+    fi
 
     # Initialize stats file in user cache directory
     local stats_dir="${XDG_CACHE_HOME:-$HOME/.cache}/mole"
@@ -171,7 +173,7 @@ perform_purge() {
     trap - INT TERM
     cleanup_monitor
 
-    if [[ -t 1 ]]; then
+    if [[ -t 1 && -z "${MOLE_PURGE_JSON:-}" ]]; then
         echo -e "${PURPLE_BOLD}Purge Project Artifacts${NC}"
     fi
 
@@ -184,40 +186,42 @@ perform_purge() {
     fi
 
     # Final summary (matching clean.sh format)
-    echo ""
+    if [[ -z "${MOLE_PURGE_JSON:-}" ]]; then
+        echo ""
 
-    local summary_heading="Purge complete"
-    local -a summary_details=()
-    local total_size_cleaned=0
-    local total_items_cleaned=0
+        local summary_heading="Purge complete"
+        local -a summary_details=()
+        local total_size_cleaned=0
+        local total_items_cleaned=0
 
-    if [[ -f "$stats_dir/purge_stats" ]]; then
-        total_size_cleaned=$(cat "$stats_dir/purge_stats" 2> /dev/null || echo "0")
-        rm -f "$stats_dir/purge_stats"
-    fi
-
-    if [[ -f "$stats_dir/purge_count" ]]; then
-        total_items_cleaned=$(cat "$stats_dir/purge_count" 2> /dev/null || echo "0")
-        rm -f "$stats_dir/purge_count"
-    fi
-
-    if [[ $total_size_cleaned -gt 0 ]]; then
-        local freed_gb
-        freed_gb=$(echo "$total_size_cleaned" | awk '{printf "%.2f", $1/1024/1024}')
-
-        summary_details+=("Space freed: ${GREEN}${freed_gb}GB${NC}")
-        summary_details+=("Free space now: $(get_free_space)")
-
-        if [[ $total_items_cleaned -gt 0 ]]; then
-            summary_details+=("Items cleaned: $total_items_cleaned")
+        if [[ -f "$stats_dir/purge_stats" ]]; then
+            total_size_cleaned=$(cat "$stats_dir/purge_stats" 2> /dev/null || echo "0")
+            rm -f "$stats_dir/purge_stats"
         fi
-    else
-        summary_details+=("No old project artifacts to clean.")
-        summary_details+=("Free space now: $(get_free_space)")
-    fi
 
-    print_summary_block "$summary_heading" "${summary_details[@]}"
-    printf '\n'
+        if [[ -f "$stats_dir/purge_count" ]]; then
+            total_items_cleaned=$(cat "$stats_dir/purge_count" 2> /dev/null || echo "0")
+            rm -f "$stats_dir/purge_count"
+        fi
+
+        if [[ $total_size_cleaned -gt 0 ]]; then
+            local freed_gb
+            freed_gb=$(echo "$total_size_cleaned" | awk '{printf "%.2f", $1/1024/1024}')
+
+            summary_details+=("Space freed: ${GREEN}${freed_gb}GB${NC}")
+            summary_details+=("Free space now: $(get_free_space)")
+
+            if [[ $total_items_cleaned -gt 0 ]]; then
+                summary_details+=("Items cleaned: $total_items_cleaned")
+            fi
+        else
+            summary_details+=("No old project artifacts to clean.")
+            summary_details+=("Free space now: $(get_free_space)")
+        fi
+
+        print_summary_block "$summary_heading" "${summary_details[@]}"
+        printf '\n'
+    fi
 }
 
 # Show help message

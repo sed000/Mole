@@ -125,6 +125,7 @@ function App() {
   const [paths, setPaths] = useState('')
   const [apps, setApps] = useState('')
   const [analyzePath, setAnalyzePath] = useState('')
+  const [autoAnalyzePath, setAutoAnalyzePath] = useState(true)
 
   const runner = useEndpoint()
 
@@ -179,12 +180,14 @@ function App() {
             .filter(Boolean),
         })
         return
-      case 'analyze':
+      case 'analyze': {
+        const trimmedPath = analyzePath.trim()
         await runner.run('analyze', {
           ...basePayload,
-          path: analyzePath.trim() || undefined,
+          path: autoAnalyzePath ? undefined : trimmedPath || undefined,
         })
         return
+      }
       case 'status':
         await runner.run('status', basePayload)
         return
@@ -303,11 +306,25 @@ function App() {
 
             {activeTab === 'analyze' && (
               <div className="form-group">
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={autoAnalyzePath}
+                    onChange={(event) => setAutoAnalyzePath(event.target.checked)}
+                  />
+                  <span>Auto-detect scan path</span>
+                </label>
                 <label>Scan path</label>
                 <input
                   value={analyzePath}
-                  onChange={(event) => setAnalyzePath(event.target.value)}
+                  onChange={(event) => {
+                    setAnalyzePath(event.target.value)
+                    if (autoAnalyzePath) {
+                      setAutoAnalyzePath(false)
+                    }
+                  }}
                   placeholder="/Users/you"
+                  disabled={autoAnalyzePath}
                 />
               </div>
             )}
